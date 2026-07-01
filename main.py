@@ -1,22 +1,20 @@
 from structures.cache import Cache
+from cli_menu import CLI_Menu
 
 def main():
     L1 = Cache(
-        nsets=8,
+        nsets=(2**6),
         blocksize_bytes=4,
         associativity=2,
-        addressing=8
+        addressing=32,
+        replacement="LRU"
     )
 
-    L1.write(0b0000, 0xAB)
-    L1.read(0b00001010)
-    L1.read(0b00001010)
-    print(L1)
-    print("------------------------------")
-    L1.write(0b00101010, 0xCC)
-    print(L1)
+    menu = CLI_Menu()
+    menu.pre_insert_cache(L1)
 
-    print(L1.getStats())
+    menu.start()
+
 
     
 

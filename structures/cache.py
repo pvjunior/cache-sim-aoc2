@@ -1,5 +1,4 @@
-from random import randbytes, randint
-from enum import IntEnum
+from random import randbytes, randint, choice
 from structures.data_block import DataBlock
 from math import log
 
@@ -11,52 +10,29 @@ class Cache:
                  addressing: int = 32,
                  replacement: str = "LRU"
                  ):
-        
-        addrOPTS = [2, 4, 8, 16, 32, 64]
-        replOPTS = ["LRU", "FIFO", "RANDOM"]
 
         if nsets % associativity and not nsets == 1:
             raise ValueError("Associativy must be ratio of nsets")
 
         self.nsets = nsets
         self.blocksize = blocksize_bytes
-
-        
         self.associativity = associativity
-        
-        if not addressing in addrOPTS:
-            raise ValueError(f"{associativity} bit addresses not supported, only 32 and 64")
-        
-        if not replacement in replOPTS:
-            raise ValueError(f"{replacement} not an option for replacement strategy. Available options: {replOPTS}")
-        
         self.replacement = replacement
         self.addressing = addressing
-
-        self._indexsize = int(log(self.nsets, 2))
-        self._offset = int(log(self.blocksize, 2))
-        self._tagsize = addressing - self._indexsize - self._offset
-
-        if addressing < self._offset + self._indexsize:
-            for addropt in addrOPTS:
-                if addropt >= self._offset + self._indexsize:
-                    suggestion = addropt
-                    break
-            raise ValueError(f"Incompatible addressing size with current nsets and blocksize values. nsets ({self._indexsize} bits) + blocksize ({blocksize_bytes} bytes, totaling {self._offset} bits for offset) is less than the available {addressing} bits for addressing. Addressing, for this configuration, must be {suggestion} bits or more")
-
 
         self.M: tuple
         self.stats = dict()
 
+        self._warned = False
+
         self._initializeCache()
 
-    
 
     def _initializeCache(self):
 
         cachebuild = []
 
-        for _ in range(self.nsets):
+        for setIndex in range(self.nsets):
             set = []
             for _ in range(self.associativity):
 
@@ -66,6 +42,10 @@ class Cache:
                     validator_bit=True, dirty_bit=True
                 )
                 set.append(block)
+
+            if self.replacement == "LRU":
+                self.PLRU.insertInSet(setIndex, set)
+
             cachebuild.append(tuple(set))
 
         self.M = tuple(cachebuild)
@@ -84,7 +64,7 @@ class Cache:
 
 
         # Build header: ADDR followed by repeating labels per associativity
-        res = "    ADDR      " + "  ".join(["   TAG    DATA  VAL DIRTY  "] * self.associativity)
+        res = "    ADDR         TAG    DATA  -->  VAL DIRTY  "
 
         # Build rows
         for addr, cache_set in enumerate(self.M):
@@ -132,9 +112,7 @@ class Cache:
             self.stats['hit'] += 1
         else:
             self.stats['miss'] += 1
-
         data = self._insert_byte_in_position(curr_block_payload, data, offset)
-
         self._write_block(address, data)
         
 
@@ -199,26 +177,53 @@ class Cache:
 
     
     def _decode_address(self, address) -> tuple:
+        if address >= (1 << self.addressing) and not self._warned:
+            print(f"\n!!!\nIt will be said just this once: You are running addresses bigger than the {self.addressing}bit setted for this cache...\n")
+            self._warned = True
+            
 
         tag = address >> self.addressing - self._tagsize
         index = (address >> self._offset) & ((1 << self._indexsize) - 1)
-        offset = address & self._offset
+        offset = address & ((1 << self._offset) - 1)
 
         return tag, index, offset
             
     def pick_block_by_politic(self, set: tuple) -> DataBlock:
         # TODO: add the correct strategies
-        #
 
-        return set[0]
+        for block in set:
+            if block.valid == 0:
+                return block
+        
+        match self.replacement:
+            case None:
+                block = set[0]
+            
+            case "LRU":
+                index = self.M.index(set)
+                block = self.PLRU.get(index)
+
+            case "FIFO":
+                index = self.M.index(set)
+                block = set[self.FIFO_tracking[index]]
+                self.FIFO_tracking[index] = (self.FIFO_tracking[index] + 1) % self.associativity
+
+            case "RANDOM":
+                block = choice(set)
+
+        return block
 
     def _fetch_set(self, index):
         return self.M[index]
     
     def _fetch_block(self, tag, index) -> tuple:
         set = self._fetch_set(index)
-        for block in set:
+        for way, block in enumerate(set):
             if (block.tag == tag) and block.valid != 0:
+                # I hope God doesn't punish me for toutching the way two times in a row, even though it changes nothing.
+                if self.replacement == "LRU":
+                    self.PLRU.touch(index, way)
+
                 return (True, block)
         
         return (False, None)
@@ -249,16 +254,109 @@ class Cache:
         
         self._nsets = val
 
+    @property
+    def replacement(self):
+        return self._replacement
+    
+    @replacement.setter
+    def replacement(self, val):
+        replOPTS = ["LRU", "FIFO", "RANDOM"]
+
+        if self.associativity == 1:
+            self._replacement = None
+            return
+
+        match val:
+            case "LRU":
+                self.PLRU = _PLRU(self.nsets, self.associativity)
+
+            case "FIFO":
+                self.FIFO_tracking = [0] * self.nsets
+
+            case "RANDOM":
+                pass
+
+            case _:
+                raise ValueError(f"{val} not an option for replacement strategy. Available options: {replOPTS}")
+            
+        self._replacement = val
+
+    @property
+    def addressing(self):
+        return self._addressing
+    
+    @addressing.setter
+    def addressing(self, addressing):
+        addrOPTS = (2, 4, 8, 16, 32, 64)
+
+        if not addressing in addrOPTS:
+            raise ValueError(f"{addressing} bit addresses not supported, only: {addrOPTS}")
+        
+        self._addressing = addressing
+
+        self._proccess_address_composition(addrOPTS)
+    
+    def _proccess_address_composition(self, addrOPTS):
+        self._indexsize = int(log(self.nsets, 2))
+        self._offset = int(log(self.blocksize, 2))
+        self._tagsize = self.addressing - self._indexsize - self._offset
+
+        if self.addressing < self._offset + self._indexsize:
+            for addropt in addrOPTS:
+                if addropt >= self._offset + self._indexsize:
+                    suggestion = addropt
+                    break
+            raise ValueError(f"Incompatible addressing size with current nsets and blocksize values. nsets ({self._indexsize} bits) + blocksize ({self.blocksize_bytes} bytes, totaling {self._offset} bits for offset) is less than the available {self.addressing} bits for addressing. Addressing, for this configuration, must be {suggestion} bits or more")
+
 class _PLRU():
     def __init__(self, nsets: int, associativity: int):
-        self.root = _PLRU_Tree_N()
+        if associativity == 1:
+            raise BaseException("Associativity is 1. Something went very wrong in there pal.")
+        self.sets = []
+
+        for _ in range(nsets):
+            self.sets.append([0] * (associativity - 1))
+
+        self.associativity = associativity
+
+    def insertInSet(self, setIndex: int, ways: list):
+        self.sets[setIndex].extend(ways)
+    
+    def get(self, setIndex: int) -> DataBlock:
+        tree = self.sets[setIndex]
+        
+        i = 0
+        while(isinstance(tree[i], int)):
+            match tree[i]:
+                case 0:
+                    # I'm still learning how to use a binary tree as an array
+                    i = 2 * i + 1
+                case 1:
+                    i = 2 * i + 2
+        
+        return tree[i]
+    
+    def touch(self, setIndex: int, wayIndex: int):
+        # AI wrote this method. I only allowed because I'm tired and it doesn't do much.
+        tree = self.sets[setIndex]
+
+        node = 0
+        left = 0
+        right = self.associativity - 1
+
+        while left != right:
+            mid = (left + right) // 2
+
+            if wayIndex <= mid:
+                tree[node] = 1      # victim should be on the other side
+                node = 2 * node + 1
+                right = mid
+            else:
+                tree[node] = 0
+                node = 2 * node + 2
+                left = mid + 1
+
+    def _get_block_traversal(tree: list):
+        return (tree)
         
 
-class _PLRU_Tree_N():
-    def __init__(self, n1, n2, value: int = 0):
-        self.next = value
-        self.nodes = tuple(n1, n2)
-
-    def getNext(self):
-        # returns the pointed node and points to the other
-        return nodes[self.next:= self.next & ~0]
