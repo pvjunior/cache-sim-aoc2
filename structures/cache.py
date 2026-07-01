@@ -79,13 +79,26 @@ class Cache:
 
         return res
     
-    # Return true if hit, false if hit
     def check(self, address) -> bool:
+        '''
+        Return true if hit, false if miss.
+        No query, hit or miss is recorded.
 
-        tag = address >> self.addressing - self._tagsize
-        index = (address >> self._offset) & ((1 << self._indexsize) - 1)
+        Use manual_query_inc(), manual_hit_inc() or manual_miss_inc() if needed.
+        '''
+        tag, index, offset = self._decode_address(address)
+        found, block = self._fetch_block(tag, index)
 
-        self.read(address)
+        return found
+
+    def manual_query_inc(self):
+        self.stats['query'] += 1
+
+    def manual_hit_inc(self):
+        self.stats['hit'] += 1
+
+    def manual_miss_inc(self):
+        self.stats['miss'] += 1
 
 
     def read(self, address: int) -> int:

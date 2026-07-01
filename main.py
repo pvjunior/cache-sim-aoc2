@@ -43,7 +43,9 @@ def main():
     # TODO: Read each address from addresses_file
     # TODO: Print queries, hits, hit ratio, misses, miss ratio and misses types for each cache level... at the end.
 
+    
     #cache.read(<address>)      # Reads given address. If it misses, fetches it to the cache.
+    #cache.check(address)       # Checks if address would hit/miss if read.
     #print(cache.getStats())    # Number of queries, misses and hits 
     #print(cache)               # Visualize cache table
 
