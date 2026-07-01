@@ -1,3 +1,4 @@
+Os comandos a seguir usam o menu interativo que não será usado no trabalho mais. Ainda servem como referência.
 # Cache Simulator in Python
 
 Run:
