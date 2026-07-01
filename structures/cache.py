@@ -2,6 +2,9 @@ from random import randbytes, randint, choice
 from structures.data_block import DataBlock
 from math import log
 
+
+# I'm a man of few words. Good luck reading.
+
 class Cache:
     def __init__(self, 
                  nsets: int,
@@ -189,7 +192,6 @@ class Cache:
         return tag, index, offset
             
     def pick_block_by_politic(self, set: tuple) -> DataBlock:
-        # TODO: add the correct strategies
 
         for block in set:
             if block.valid == 0:
