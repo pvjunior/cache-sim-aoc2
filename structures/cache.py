@@ -6,12 +6,13 @@ from math import log
 # I'm a man of few words. Good luck reading.
 
 class Cache:
-    def __init__(self, 
+    def __init__(self,
                  nsets: int,
                  blocksize_bytes: int,
                  associativity: int = 1,
                  addressing: int = 32,
-                 replacement: str = "LRU"
+                 replacement: str = "LRU",
+                 lower_cache = None
                  ):
 
         if nsets % associativity and not nsets == 1:
@@ -22,6 +23,7 @@ class Cache:
         self.associativity = associativity
         self.replacement = replacement
         self.addressing = addressing
+        self.lower_cache = lower_cache
 
         self.M: tuple
         self.stats = dict()
@@ -56,6 +58,13 @@ class Cache:
         self.stats['query'] = 0
         self.stats['hit'] = 0
         self.stats['miss'] = 0
+        # Miss categorization: compulsory, capacity, conflict
+        self.stats['compulsory_miss'] = 0
+        self.stats['capacity_miss'] = 0
+        self.stats['conflict_miss'] = 0
+
+        # Track accessed blocks for compulsory miss detection
+        self._accessed_blocks = []
 
 
     def __str__(self):
@@ -107,12 +116,25 @@ class Cache:
         tag, index, offset = self._decode_address(address)
 
         found, block = self._fetch_block(tag, index)
-        if not found:
+        if found:
+            self.stats['hit'] += 1
+            return block.payload
+        else:
             self.stats['miss'] += 1
-            return self._refill(address)
-        
-        self.stats['hit'] += 1
-        return block.payload
+            # Check if this is a compulsory miss (first access to this block)
+            block_address = address & ~((1 << self._offset) - 1)  # Get block address
+            if block_address not in self._accessed_blocks:
+                self._accessed_blocks.append(block_address)
+                self.stats['compulsory_miss'] += 1
+            else:
+                # Could be capacity or conflict - for now categorize as capacity
+                self.stats['capacity_miss'] += 1
+            if self.lower_cache is not None:
+                data = self.lower_cache.read(address)
+                self._allocate_and_write(address, data)
+                return data
+            else:
+                return self._refill(address)
 
         
     def write(self, address: int, data: int):
@@ -130,6 +152,15 @@ class Cache:
             self.stats['miss'] += 1
         data = self._insert_byte_in_position(curr_block_payload, data, offset)
         self._write_block(address, data)
+
+        # If it was a miss, update the block address tracking
+        if not found:
+            block_address = address & (~((1 << self._offset) - 1))
+            if block_address not in self._accessed_blocks:
+                self._accessed_blocks.append(block_address)
+                self.stats['compulsory_miss'] += 1
+            else:
+                self.stats['capacity_miss'] += 1
         
 
     def _insert_byte_in_position(self, current_block_payload: int, data_to_insert: int, offset: int) -> int:
@@ -150,10 +181,23 @@ class Cache:
         if not found:
             set = self._fetch_set(index)
             block = self.pick_block_by_politic(set)
-            
+
         self._update_block_data(block, tag, data)
         if not dirty:
             block.dirty = 0
+
+    def _allocate_and_write(self, address: int, data: int):
+        """Allocate a block for the address and write data to it, without updating statistics.
+        This is used when loading data from a lower cache level.
+        """
+        tag, index, offset = self._decode_address(address)
+        found, block = self._fetch_block(tag, index)
+        if not found:
+            set = self._fetch_set(index)
+            block = self.pick_block_by_politic(set)
+        self._update_block_data(block, tag, data)
+        # When loading data from a lower cache, the block is clean (not dirty)
+        block.dirty = 0
 
     def _update_block_data(self, block: DataBlock, tag: int, data: int):
 
@@ -256,7 +300,7 @@ class Cache:
     
 
     def getStats(self) -> str:
-        return f'''QUERIES: {self.stats['query']}\nHITS: {self.stats['hit']}\nMISSES: {self.stats['miss']}\nMISS RATIO: {(self.stats['miss']/self.stats['query'] * 100):.2f}%'''
+        return f'''QUERIES: {self.stats['query']}\nHITS: {self.stats['hit']}\nMISSES: {self.stats['miss']}\nMISS RATIO: {(self.stats['miss']/self.stats['query'] * 100):.2f}%\nCOMPULSORY MISSES: {self.stats['compulsory_miss']}\nCAPACITY MISSES: {self.stats['capacity_miss']}\nCONFLICT MISSES: {self.stats['conflict_miss']}'''
 
     @property
     def nsets(self):

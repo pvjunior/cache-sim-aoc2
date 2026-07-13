@@ -4,7 +4,7 @@ from sys import argv
 
 def main():
     arguments = argv[1:] # Ignores main.py
-    
+
     if not arguments:
         exit("Incorrect arguments. No binary file or cache settings found.")
 
@@ -12,11 +12,11 @@ def main():
     caches_settings = arguments[:-1]
 
     caches = []
-    
+
     # If no cache setting is passed, create the default one.
     if not caches_settings:
         L1 = Cache(
-            nsets=(2048),
+            nsets=2048,
             blocksize_bytes=8,
             associativity=1,
             addressing=32,
@@ -24,10 +24,13 @@ def main():
         )
 
         caches.append(L1)
-    
+
     # Create and store each cache given.
-    for settings in caches_setings:
-        nsets, bsize, assoc = sp_set(settings)
+    for settings in caches_settings:
+        parts = settings.split(":")
+        if len(parts) != 3:
+            exit(f"Incorrect cache settings format. Expected <nsets>:<bsize>:<assoc>, got: {settings}")
+        nsets, bsize, assoc = map(int, parts)
 
         c = Cache(
             nsets=nsets,
@@ -38,28 +41,28 @@ def main():
 
         caches.append(c)
 
-    # TODO: Implement multiple level system
-    # TODO: Implement system to track and categorize misses (compulsory and conflict + capacity)
-    # TODO: Read each address from addresses_file
-    # TODO: Print queries, hits, hit ratio, misses, miss ratio and misses types for each cache level... at the end.
+    # Link caches to form a hierarchy: L1 -> L2 -> L3 -> ... -> None (memory)
+    for i in range(len(caches) - 1):
+        caches[i].lower_cache = caches[i + 1]
+    # The last cache's lower_cache remains None, meaning it accesses main memory on miss
 
-    
-    #cache.read(<address>)      # Reads given address. If it misses, fetches it to the cache.
-    #cache.check(address)       # Checks if address would hit/miss if read.
-    #print(cache.getStats())    # Number of queries, misses and hits 
-    #print(cache)               # Visualize cache table
+    # Read addresses from the file and process them through the L1 cache
+    with open(addresses_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            try:
+                address = int(line, 0)  # allows decimal, 0x hex, 0b binary
+                caches[0].read(address)
+            except ValueError:
+                print(f"Ignoring invalid address: {line}")
 
-
-
-
-
-
-# Receives a string like '2048:8:4' and returns (nsets, bsize, assoc), as integers.
-def sp_set(settings_string: str) -> tuple:
-    settings = tuple(map(int, settings_string.split(":")))
-    if len(settings) != 3:
-        exit(f"Incorrect cache settings: {settings}")
-
-    return settings
+    # Print statistics for each cache level
+    print("\n=== Cache Statistics ===")
+    for i, cache in enumerate(caches):
+        print(f"\nCache Level {i+1} (L{i+1}):")
+        print(f"  Configuration: {cache.nsets} sets, {cache.blocksize} B block size, {cache.associativity}-way associativity, {cache.replacement} replacement")
+        print(cache.getStats())
 
 main()
