@@ -1,6 +1,7 @@
 from pathlib import Path
 from structures.cache import Cache
 
+
 # This whole menu was started by me and finished by AI
 class CLI_Menu:
     def __init__(self):
@@ -96,7 +97,9 @@ class CLI_Menu:
     def _create(self, params):
         if not params:
             print("Usage:")
-            print("  create <nsets>:<blocksize_bytes>:<associativity>:<replacement> --OPT_ADDRESSING=<2|4|8|16|32|64>")
+            print(
+                "  create <nsets>:<blocksize_bytes>:<associativity>:<replacement> --OPT_ADDRESSING=<2|4|8|16|32|64>"
+            )
             return
 
         spec = params[0]
@@ -117,14 +120,16 @@ class CLI_Menu:
                 blocksize_bytes=int(block_s),
                 associativity=int(assoc_s),
                 addressing=addr_bits,
-                replacement=repl_s.upper()
+                replacement=repl_s.upper(),
             )
             self.pre_insert_cache(cache)
             print(f"Created and selected cache {self.caches.index(cache)}")
         except ValueError:
             print("Invalid create format.")
             print("Usage:")
-            print("  create <nsets>:<blocksize_bytes>:<associativity>:<replacement> --OPT_ADDRESSING=<2|4|8|16|32|64>")
+            print(
+                "  create <nsets>:<blocksize_bytes>:<associativity>:<replacement> --OPT_ADDRESSING=<2|4|8|16|32|64>"
+            )
         except Exception as e:
             print(f"Failed to create cache: {e}")
 
@@ -145,14 +150,12 @@ class CLI_Menu:
         except (ValueError, IndexError):
             print("Invalid cache index")
 
-
-
     def _stats(self):
         if not self._require_cache():
             return
 
         print(self._current_cache.getStats())
-        
+
     def _config(self):
         if not self._require_cache():
             return
@@ -164,7 +167,9 @@ class CLI_Menu:
         print(f"associativity   : {c.associativity}")
         print(f"blocksize bytes : {c.blocksize}")
         print(f"address bits    : {c.addressing}")
-        print(f"replacement     : {c.replacement if c.replacement is not None else 'NONE'}")
+        print(
+            f"replacement     : {c.replacement if c.replacement is not None else 'NONE'}"
+        )
         print("")
         print("ADDRESS BREAKDOWN")
         print("-" * 40)
@@ -239,7 +244,7 @@ class CLI_Menu:
         if not self._require_cache():
             return
         if len(params) != 1:
-            print("Usage: load <path/to/file.txt>")
+            print("Usage: load <path/to/file>")
             return
 
         path = Path(params[0])
@@ -248,24 +253,34 @@ class CLI_Menu:
             return
 
         try:
-            with path.open("r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-
-                    if not line or line.startswith("#"):
-                        continue
-
-                    try:
-                        self._current_cache.read(self._parse_int(line))
-                    except ValueError:
-                        print(f"Skipping invalid address: {line}")
+            if path.suffix == ".bin":
+                # Binary file: read 4-byte big-endian integers
+                with path.open("rb") as f:
+                    while True:
+                        bytes_data = f.read(4)
+                        if not bytes_data or len(bytes_data) < 4:
+                            break
+                        address = int.from_bytes(bytes_data, byteorder="big")
+                        self._current_cache.read(address)
+            else:
+                # Text file: one address per line
+                with path.open("r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        try:
+                            self._current_cache.read(self._parse_int(line))
+                        except ValueError:
+                            print(f"Skipping invalid address: {line}")
 
             print("Load complete.")
         except Exception as e:
             print(f"Load failed: {e}")
 
     def _help(self):
-        print("""
+        print(
+            """
 commands:
 
   help
@@ -306,13 +321,17 @@ usage:
     Prints HIT or MISS.
     Address and data can be decimal, 0x hex, 0b binary, or 0o octal.
 
-  load <path/to/file.txt>
-    Reads one address per line and performs a read on each.
+  load <path/to/file>
+    Reads addresses from a file and performs a read on each.
+    If file extension is .bin, reads 4-byte big-endian integers.
+    Otherwise, treats file as text with one address per line (ignoring empty lines and comments).
 
-    Example:
+    Example (text):
       0
       32
       64
       96
     Address format is the same as above.
-""")
+"""
+        )
+
