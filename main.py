@@ -89,7 +89,7 @@ def main() -> None:
     for idx, cache in enumerate(caches, start=1):
         print(f"\nCache Level {idx} (L{idx}):")
         print(
-            f"  Configuration: {cache.nsets} sets, {cache.blocksize} B block size, "
+            f"  \tConfiguration: {cache.nsets} sets, {cache.blocksize} B block size, "
             f"{cache.associativity}-way associativity, {cache.replacement} replacement"
         )
         print(cache.getStats())

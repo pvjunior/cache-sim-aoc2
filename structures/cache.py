@@ -304,7 +304,7 @@ class Cache:
         self._blocksize = val
 
     def getStats(self) -> str:
-        return f"""QUERIES: {self.stats['query']}\nHITS: {self.stats['hit']}\nMISSES: {self.stats['miss']}\nMISS RATIO: {(self.stats['miss']/self.stats['query'] * 100):.2f}%\nCOMPULSORY MISSES: {self.stats['compulsory_miss']}\nCAPACITY MISSES: {self.stats['capacity_miss']}\nCONFLICT MISSES: {self.stats['conflict_miss']}"""
+        return f"""\tQUERIES: {self.stats['query']}\n\tHITS: {self.stats['hit']}\n\tMISSES: {self.stats['miss']}\n\tMISS RATIO: {(self.stats['miss']/self.stats['query'] * 100):.2f}%\n\tCOMPULSORY MISSES: {self.stats['compulsory_miss']}\n\tCAPACITY MISSES: {self.stats['capacity_miss']}\n\tCONFLICT MISSES: {self.stats['conflict_miss']}"""
 
     @property
     def nsets(self):
